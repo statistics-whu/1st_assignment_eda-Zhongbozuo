@@ -1,0 +1,204 @@
+---
+title: "关于某家的商业数据分析报告"
+author: "左仲博-MEM-第一次作业"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 2
+    fig_caption: true
+    latex_engine: xelatex
+    keep_tex: true
+documentclass: ctexart
+header-includes:
+  - \usepackage{setspace}
+  - \setstretch{1.5}
+  - \usepackage{geometry}
+  - \geometry{a4paper, left=2cm, right=2cm, top=2cm, bottom=2cm}
+---
+
+```{r setup,include=FALSE,echo=FALSE}
+knitr::opts_chunk$set(echo=TRUE)
+library(tidyverse)
+library(modelr)
+library(showtext)
+showtext_auto(enable=TRUE)
+theme_set(theme(text=element_text(family="wqy-microhei",size=10)))
+lj <- read.csv("./data/2023-09-12_cleaned.csv")
+```
+
+
+# 数据介绍
+本报告链家数据获取方式如下： 数据为2023 年 9 月 12 日获取了[链家武汉二手房网站](https://wh.lianjia.com/ershoufang/)中数据。
+
+• 链家二手房网站默认显示 100 页，每页 30 套房产，因此本数据包括 3000 套房产信息；
+
+• 数据包括了页面可见部分的文本信息，具体字段及说明见作业说明。
+
+**说明：**数据仅用于教学；由于不清楚链家数据的展示规则，因此数据可能并不是武汉二手房市场的随机抽样，结论很可能有很大的偏差，甚至可能是错误的。
+
+数据概览：
+
+| 变量              | 解释                                     |
+|:------------------|:-----------------------------------------|
+| property_name     | 小区名字                                 |
+| property_region   | 所处区域                                 |
+| price_ttl         | 房屋总价，单位万元                       |
+| price_sqm         | 房屋单价，单位元                         |
+| bedrooms          | 房间数                                   |
+| livingrooms       | 客厅数                                   |
+| building_area     | 建筑面积                                 |
+| directions1       | 房屋主要朝向                             |
+| directions2       | 房屋次要朝向                             |
+| decoration        | 装修状况                                 |
+| property_t_height | 楼栋总层数                               |
+| property_height   | 房屋在所在楼栋所处位置，取值为高中低     |
+| property_style    | 建筑形式，如板楼、塔楼等                 |
+| followers         | 在该二手房网站的关注人数                 |
+| near_subway       | 是否靠近地铁                             |
+| if_2y             | 产证是否满2年                            |
+| has_key           | 中介是否有钥匙，标注"随时看房"表示有钥匙 |
+| vr                | 是否支持VR看房                           |
+
+# 一、分析
+
+## 1、查看数据整体结构：
+```{r}
+glimpse(lj)
+```
+
+## 2、去重，查看整体分布特征
+对数据进行去重。
+
+```{r}
+lj <- distinct(lj)
+summary(lj)
+
+```
+
+**可以直观看到：**
+
+房屋总价数据分布呈右偏分布；房屋单价数据分布呈右偏分布；建筑面积呈右偏分布。武汉在售二手房多为2~3居室、1~2客厅、平均楼层24层的中层建筑住房。
+
+# 二、探索性分析
+## 1、数据分布情况
+### 房屋单价和总价
+
+```{r}
+lj %>% 
+ggplot()+
+geom_point(aes(x=building_area,y=price_ttl,color=price_ttl))+
+geom_smooth(aes(x=building_area,y=price_ttl,))+
+labs(title="房屋面积和总价关系",x="房屋面积",y="房屋总价")+
+theme(plot.title=element_text(size=10,hjust=0.5,vjust=0.5))
+```
+
+**结论**：除了极个别的异常数据,房屋房价和房屋总价整体成正相关关系，且大部分房屋建筑面积集中在100平米和200万的价格上。
+
+### 房屋建筑面积分布情况
+
+```{r}
+ggplot(lj) +
+geom_histogram(aes(building_area),fill='blue')+
+labs(title="房屋建筑面积分布情况",x="建筑面积",y="频数")+
+theme(plot.title=element_text(size=10,hjust=0.5,vjust=0.5))
+
+```
+### 客厅数分布情况
+
+```{r}
+# 房面客厅数分布情况
+ggplot(lj)+
+geom_histogram(aes(livingrooms),fill='blue')+
+labs(title="客厅数分布情况",x="客厅数",y="频数")+
+theme(plot.title=element_text(size=10,hjust=0.5))
+```
+
+
+### 房间数分布情况
+
+```{r}
+# 房屋房间数分布情况
+ggplot(lj)+
+geom_histogram(aes(bedrooms),fill='blue',bins=30)+
+labs(title="房间数分布情况",x="房间数",y="频数")+
+theme(plot.title=element_text(size=10,hjust=0.5))
+```
+
+
+### 楼层分布情况
+
+```{r}
+# 楼层分布情况
+ggplot(lj)+
+geom_bar(aes(property_height,fill=property_height))+
+labs(title="楼层分布情况",x="楼层高度",y="频数")+
+theme(plot.title=element_text(size=10,hjust=0.5))
+```
+
+
+**结论**：房屋面积多在100m^2，以中层三室两厅房型为主。
+
+## 2、区域维度分析
+### 各区域在售二手房分布情况
+
+```{r}
+region_count <- lj %>% 
+group_by(property_region) %>% 
+summarise(sum_property=n())
+ggplot(region_count)+
+geom_bar(aes(x=property_region,y =sum_property),stat='identity')
+
+```
+
+
+### 各区域均价分布情况
+
+```{r}
+sqm <- lj %>% 
+group_by(property_region) %>% 
+summarise(region=mean(price_sqm))
+ggplot(sqm)+
+geom_bar(aes(x=property_region,y=region),stat="identity")
+
+```
+
+**结论**：武汉在售二手房地区房屋均价在20000元左右。
+
+## 3，价格分布情况
+### 查看区域房屋总价分布情况
+
+```{r}
+# 查看区域总价的箱线图
+ggplot(lj)+
+geom_boxplot(aes(x = property_region,y=price_ttl)) +
+labs(title = "区域房屋总价分布情况",x="所属区域",y="房屋总价") +
+theme(axis.text.x=element_text(size=10,angle=90), 
+plot.title=element_text(size=10,hjust=0.5))
+
+```
+
+
+### 区域房屋单价分布情况
+
+```{r}
+# 查看区域房屋单价的箱线图
+ggplot(lj)+
+geom_boxplot(aes(x=property_region,y=price_sqm))+
+labs(title="区域房屋单价分布情况",x="所属区域",y="房屋单价")+
+theme(axis.text.x=element_text(size=10,angle=90), 
+plot.title=element_text(size=10,hjust=0.5))
+```
+
+## 3, 房屋面积、房间数量、客厅数量与房屋总价的模型
+
+线性回归分析：
+
+```{r}
+model<- function(b){
+sum((lj$price_ttl-(b[1]*lj$building_area+b[2]*lj$bedrooms+b[3]*lj$livingrooms+b[4]))^2)
+}
+best <- optim(c(0,0,0,0),model)
+best$par
+
+```
+
